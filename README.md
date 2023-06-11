@@ -39,9 +39,12 @@ sudo apt-mark hold kubelet kubeadm kubectl
 > 
 > 컨테이너 런타임과 kubelet의 cgroup 드라이버를 일치시켜야 하며, 그렇지 않은 경우 kubelet 프로세스에 오류가 발생한다. 상기의 링크를 참고하여 수정을 한다.
 
+> [systemd cgroup 드라이브 환경 설정](https://kubernetes.io/ko/docs/setup/production-environment/container-runtimes/#containerd-systemd)
 > 
+> 만약 containerd를 패키지(RPM, .deb 등)를 통해 설치하였다면, CRI integration 플러그인은 기본적으로 비활성화되어 있다.
 > 
-> 
+> 쿠버네티스에서 containerd를 사용하기 위해서는 CRI support가 활성화되어 있어야 한다. cri가 /etc/containerd/config.toml 파일 안에 있는 disabled_plugins 목록에 포함되지 않도록 주의하자. 만약 해당 파일을 변경하였다면, containerd를 다시 시작한다.
+
 
 ### 4. Setup GPU
 
@@ -123,6 +126,32 @@ ubuntu@desktop > ~/git/MLOps > sudo docker info | grep nvidia
 
 4. NVIDIA Device Plugin
 
+[containerd 구성](https://github.com/NVIDIA/k8s-device-plugin#configure-containerd)
+
+Kubernetes로 실행할 때 low-level 런타임으로 설정하기 위해 하기와 같이 설정한다.
+
+`/etc/containerd/config.toml`
+``` toml
+version = 2
+[plugins]
+  [plugins."io.containerd.grpc.v1.cri"]
+    [plugins."io.containerd.grpc.v1.cri".containerd]
+      default_runtime_name = "nvidia"
+
+      [plugins."io.containerd.grpc.v1.cri".containerd.runtimes]
+        [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.nvidia]
+          privileged_without_host_devices = false
+          runtime_engine = ""
+          runtime_root = ""
+          runtime_type = "io.containerd.runc.v2"
+          [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.nvidia.options]
+            BinaryName = "/usr/bin/nvidia-container-runtime"
+```
+
+``` bash
+sudo systemctl restart containerd
+```
+
 Kubernets의 버전에 맞게 plugin을 설치한다.
 
 [NVIDIA/k8s-device-plugin](https://github.com/NVIDIA/k8s-device-plugin)
@@ -150,10 +179,12 @@ wget https://raw.githubusercontent.com/NVIDIA/k8s-device-plugin/v0.14.0/nvidia-d
 kubectl create -f https://raw.githubusercontent.com/NVIDIA/k8s-device-plugin/v0.14.0/nvidia-device-plugin.yml
 ```
 
-또한, Control Plane 노드에 Pod를 배포하기 위해선 taint를 제거해야 한다.
+또한, Control Plane 노드에 Pod를 배포하기 위해선 taint를 제거해야 하며, 하기의 taint를 추가한다.
 
 ``` bash
 kubectl taint nodes desktop node-role.kubernetes.io/control-plane-
+
+kubectl taint nodes desktop nvidia.com/gpu=:NoSchedule
 ```
 
 검증
