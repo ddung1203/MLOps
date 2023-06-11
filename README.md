@@ -38,6 +38,9 @@ sudo apt-mark hold kubelet kubeadm kubectl
 > [cgroup driver 오류](https://github.com/ddung1203/TIL/blob/main/k8s/00_Kubeadm_k8s_install.md#cgroup-driver-%EC%98%A4%EB%A5%98)
 > 
 > 컨테이너 런타임과 kubelet의 cgroup 드라이버를 일치시켜야 하며, 그렇지 않은 경우 kubelet 프로세스에 오류가 발생한다. 상기의 링크를 참고하여 수정을 한다.
+
+> 
+> 
 > 
 
 ### 4. Setup GPU
@@ -66,7 +69,7 @@ sudo systemctl restart docker
 검증
 
 ``` bash
-ubuntu@desktop > ~/git/MLOps >  main ± > sudo docker run --rm --gpus all nvidia/cuda:12.1.1-base-ubuntu20.04 nvidia-smi
+ubuntu@desktop > ~/git/MLOps > sudo docker run --rm --gpus all nvidia/cuda:12.1.1-base-ubuntu20.04 nvidia-smi
 [sudo] password for ubuntu: 
 Sun Jun 11 15:42:10 2023       
 +---------------------------------------------------------------------------------------+
@@ -113,7 +116,7 @@ sudo service docker restart
 검증
 
 ``` bash
-ubuntu@desktop > ~/git/MLOps >  main ± > sudo docker info | grep nvidia
+ubuntu@desktop > ~/git/MLOps > sudo docker info | grep nvidia
  Runtimes: io.containerd.runc.v2 nvidia runc
  Default Runtime: nvidia
 ```
@@ -121,6 +124,8 @@ ubuntu@desktop > ~/git/MLOps >  main ± > sudo docker info | grep nvidia
 4. NVIDIA Device Plugin
 
 Kubernets의 버전에 맞게 plugin을 설치한다.
+
+[NVIDIA/k8s-device-plugin](https://github.com/NVIDIA/k8s-device-plugin)
 
 ``` bash
 wget https://raw.githubusercontent.com/NVIDIA/k8s-device-plugin/v0.14.0/nvidia-device-plugin.yml
@@ -139,14 +144,52 @@ wget https://raw.githubusercontent.com/NVIDIA/k8s-device-plugin/v0.14.0/nvidia-d
         effect: NoSchedule
 ```
 
+배포
+
 ``` bash
 kubectl create -f https://raw.githubusercontent.com/NVIDIA/k8s-device-plugin/v0.14.0/nvidia-device-plugin.yml
+```
+
+또한, Control Plane 노드에 Pod를 배포하기 위해선 taint를 제거해야 한다.
+
+``` bash
+kubectl taint nodes desktop node-role.kubernetes.io/control-plane-
 ```
 
 검증
 
 ``` bash
-ubuntu@desktop > ~/git/MLOps >  main ± > kubectl get nodes "-o=custom-columns=NAME:.metadata.name,GPU:.status.allocatable.nvidia\.com/gpu"
+ubuntu@desktop > ~/git/MLOps > kubectl get nodes "-o=custom-columns=NAME:.metadata.name,GPU:.status.allocatable.nvidia\.com/gpu"
 NAME      GPU
 desktop   1
+```
+
+``` bash
+ubuntu@desktop > ~/git/MLOps > cat <<EOF | kubectl apply -f -                           
+apiVersion: v1
+kind: Pod
+metadata:
+  name: gpu-pod
+spec:
+  restartPolicy: Never
+  containers:
+    - name: cuda-container
+      image: nvcr.io/nvidia/k8s/cuda-sample:vectoradd-cuda10.2
+      resources:
+        limits:
+          nvidia.com/gpu: 1 # requesting 1 GPU
+  tolerations:
+  - key: nvidia.com/gpu
+    operator: Exists
+    effect: NoSchedule
+EOF
+pod/gpu-pod created
+
+ubuntu@desktop > ~/git/MLOps > kubectl logs gpu-pod                                                                              
+[Vector addition of 50000 elements]
+Copy input data from the host memory to the CUDA device
+CUDA kernel launch with 196 blocks of 256 threads
+Copy output data from the CUDA device to the host memory
+Test PASSED
+Done
 ```
