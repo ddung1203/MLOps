@@ -160,11 +160,14 @@ Kubernets의 버전에 맞게 plugin을 설치한다.
 wget https://raw.githubusercontent.com/NVIDIA/k8s-device-plugin/v0.14.0/nvidia-device-plugin.yml
 ```
 
-현재 환경은 Control Plane에서 모든 것을 실행중이다. 따라서 하기의 설정을 추가한다.
+현재 환경은 Control Plane에서 모든 것을 실행중이다. 하기의 설정은 Control Plane 노드에 Pod를 배포하기 위해선 Toleration을 통해 Taint가 있는 Pod를 스케줄링할 수 있도록 한다.
+
+[Taint & Toleration](https://github.com/ddung1203/TIL/blob/main/k8s/15_Pod_Scheduling.md#taint--toleration)
 
 ``` yaml
     spec:
       tolerations:
+      # node-role.kubernetes.io/control-plane 추가
       - key: node-role.kubernetes.io/control-plane
         operator: Exists
         effect: NoSchedule
@@ -173,18 +176,16 @@ wget https://raw.githubusercontent.com/NVIDIA/k8s-device-plugin/v0.14.0/nvidia-d
         effect: NoSchedule
 ```
 
+또한 Taint 설정을 통해 설정한 노드에 `nvidia.com/gpu` key가 없는 Pod들이 스케줄링 되지 않도록 한다.
+
+``` bash
+kubectl taint nodes desktop nvidia.com/gpu=:NoSchedule
+```
+
 배포
 
 ``` bash
 kubectl create -f https://raw.githubusercontent.com/NVIDIA/k8s-device-plugin/v0.14.0/nvidia-device-plugin.yml
-```
-
-또한, Control Plane 노드에 Pod를 배포하기 위해선 taint를 제거해야 하며, 하기의 taint를 추가한다.
-
-``` bash
-kubectl taint nodes desktop node-role.kubernetes.io/control-plane-
-
-kubectl taint nodes desktop nvidia.com/gpu=:NoSchedule
 ```
 
 검증
@@ -224,3 +225,170 @@ Copy output data from the CUDA device to the host memory
 Test PASSED
 Done
 ```
+
+> 테스트 환경이기 때문에, Taint는 임시 제거 후 사용하겠다.
+> 
+> `kubectl taint nodes desktop nvidia.com/gpu-`
+
+## Setup Components
+
+### 1. Kubeflow
+
+Kubeflow는 Kubernetes 용 기계 학습 툴킷이다.
+
+ML Workflow
+
+1. 데이터 준비
+2. 모델 교육
+3. 예측 제공
+4. 서비스 관리
+
+Kubeflow는 Kubernetes가 하기의 기능을 수행하도록 하여 ML모델을 확장하고 Production에 배포하는 작업을 간단하게 한다.
+
+- 다양한 인프라에서 쉽고 반복 가능하며 이식 가능한 배포
+- 느슨하게 결합된 마이크로서비스 배포 및 관리
+- 수요에 따른 확장
+
+[kubeflow/manifests Repository](https://github.com/kubeflow/manifests)
+
+1. Cert-manager
+
+``` bash
+kustomize build common/cert-manager/cert-manager/base | kubectl apply -f -
+```
+
+> **kustomize란?**
+> 
+> 기존의 Kubernetes 매니페스트 파일을 템플릿화하고, 이를 기반으로 필요한 수정 사항을 적용할 수 있다. 예를 들어, 여러 개의 환경(개발, 스테이징, 프로덕션 등)에서 동일한 애플리케이션을 배포하려는 경우, Kustomize를 사용하여 환경별로 설정을 조정할 수 있다. 이를 통해 중복을 최소화하고 유지 관리를 용이하게 할 수 있다.
+> 
+> 대표적인 도구로 Kustomize, Helm, Ksonnet가 있다.
+
+2. kubeflow-issuer
+
+``` bash
+kustomize build common/cert-manager/kubeflow-issuer/base | kubectl apply -f -
+```
+
+3. Istio
+
+CRD, namespace, Istio를 설치한다.
+
+``` bash
+kustomize build common/istio-1-16/istio-crds/base | kubectl apply -f -
+kustomize build common/istio-1-16/istio-namespace/base | kubectl apply -f -
+kustomize build common/istio-1-16/istio-install/base | kubectl apply -f -
+```
+
+4. Dex
+
+``` bash
+kustomize build common/dex/overlays/istio | kubectl apply -f -
+```
+
+5. OIDC AuthService
+
+``` bash
+kustomize build common/oidc-authservice/base | kubectl apply -f -
+```
+
+> **pvc 생성** 
+> 
+> [NFS 설치](https://github.com/ddung1203/TIL/blob/main/k8s/10_Volume.md#nfs%EB%A5%BC-%EC%82%AC%EC%9A%A9%ED%95%9C-%EC%A0%95%EC%A0%81-%ED%94%84%EB%A1%9C%EB%B9%84%EC%A0%80%EB%8B%9Dstatic-provision) 및 [NFS Dynamic Provisioner 구성](https://github.com/ddung1203/TIL/blob/main/k8s/10_Volume.md#nfs-dynamic-provisioner-%EA%B5%AC%EC%84%B1)을 참고
+> 
+> 또한, 기본 StorageClass nfs-client로 변경해준다.
+> 
+> `kubectl patch storageclass nfs-client -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'`
+
+6. Kubeflow Namespace
+
+``` bash
+kustomize build common/kubeflow-namespace/base | kubectl apply -f -
+```
+
+7. Kubeflow Roles
+
+``` bash
+kustomize build common/kubeflow-roles/base | kubectl apply -f -
+```
+
+8. Kubeflow Istio Resources
+
+``` bash
+kustomize build common/istio-1-16/kubeflow-istio-resources/base | kubectl apply -f -
+```
+
+9. Kubeflow Pipelines
+
+``` bash
+kustomize build apps/pipeline/upstream/env/cert-manager/platform-agnostic-multi-user | awk '!/well-defined/' | kubectl apply -f -
+```
+
+10. Katib
+
+``` bash
+kustomize build apps/katib/upstream/installs/katib-with-kubeflow | kubectl apply -f -
+```
+
+11. Central Dashboard
+
+``` bash
+kustomize build apps/centraldashboard/upstream/overlays/kserve | kubectl apply -f -
+```
+
+12. Admission Webhook
+
+``` bash
+kustomize build apps/admission-webhook/upstream/overlays/cert-manager | kubectl apply -f -
+```
+
+13. Notebook & Jupyter Web App
+
+``` bash
+kustomize build apps/jupyter/notebook-controller/upstream/overlays/kubeflow | kubectl apply -f -
+
+kustomize build apps/jupyter/jupyter-web-app/upstream/overlays/istio | kubectl apply -f -
+```
+
+14. Profiles + KFAM
+
+``` bash
+kustomize build apps/profiles/upstream/overlays/kubeflow | kubectl apply -f -
+```
+
+15. Volumes Web App
+
+``` bash
+kustomize build apps/volumes-web-app/upstream/overlays/istio | kubectl apply -f -
+```
+
+16. Tensorboard & Tensorboard Web App
+
+``` bash
+kustomize build apps/tensorboard/tensorboards-web-app/upstream/overlays/istio | kubectl apply -f -
+
+kustomize build apps/tensorboard/tensorboard-controller/upstream/overlays/kubeflow | kubectl apply -f -
+```
+
+17. Trainging Operator
+
+``` bash
+kustomize build apps/training-operator/upstream/overlays/kubeflow | kubectl apply -f -
+```
+
+18. User Namespace
+
+``` bash
+kustomize build common/user-namespace/base | kubectl apply -f -
+```
+
+확인
+
+``` bash
+kubectl port-forward svc/istio-ingressgateway -n istio-system 8080:80
+```
+
+![Kubeflow Central Dashboard](./img/kubeflow_central_dashboard.png)
+
+> ID: user@example.com
+> 
+> Password: 12341234
