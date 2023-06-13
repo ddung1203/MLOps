@@ -230,7 +230,7 @@ Done
 > 
 > `kubectl taint nodes desktop nvidia.com/gpu-`
 
-## Setup Components
+<!-- ## Setup Components
 
 ### 1. Kubeflow
 
@@ -392,3 +392,9 @@ kubectl port-forward svc/istio-ingressgateway -n istio-system 8080:80
 > ID: user@example.com
 > 
 > Password: 12341234
+
+### 2. MLflow Tracking Server
+
+MLflow는 시험 관리 용도 외에 ML Model 패키징, 배포 관리, 모델 저장 기능을 제공한다.
+
+1. MLflow Tracking Server 전, PostgreSQL DB 설치 -->
