@@ -77,6 +77,10 @@ Delete의 경우, `Makefile` 내 확인 가능
 make delete-kubeflow INSTALLATION_OPTION=kustomize DEPLOYMENT_OPTION=vanilla
 ```
 
+짜잔!!
+
+![kubeflow_central_dashboard](./img/kubeflow_central_dashboard_2.png)
+
 ### ⚠️ 경고
 
 현재 버전 기준, HPA의 `autoscaling/v2beta2`은 deprecated 되었다. 하지만 `awslabs` 기준의 버전과 이에 상응하는 `kubeflow` 버전은 deprecated된 `autoscaling/v2beta2`를 사용하고 있다.
