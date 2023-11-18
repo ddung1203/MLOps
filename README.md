@@ -1,5 +1,7 @@
 # MLOps
 
+현재 진행하는 실습은 EKS 환경에서 진행하였으며, `Deploy the vanilla version of Kubeflow on AWS Using Kustomize`를 사용하여 Kubeflow를 배포하였다.
+
 목차
 
 - [Practitioners guide to MLOps](./mlops-component.md)
