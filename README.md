@@ -78,16 +78,16 @@ spec:
 `kubectl describe nodes`
 
 ```bash
-Containers:
-  test:
-    Limits:
-      cpu:             600m
-      memory:          1288490188800m
-      nvidia.com/gpu:  1
-    Requests:
-      cpu:             500m
-      memory:          1Gi
-      nvidia.com/gpu:  1
+Allocated resources:
+  (Total limits may be over 100 percent, i.e., overcommitted.)
+  Resource           Requests      Limits
+  --------           --------      ------
+  cpu                1200m (30%)   14700m (375%)
+  memory             1814Mi (12%)  11287710924800m (71%)
+  ephemeral-storage  0 (0%)        0 (0%)
+  hugepages-1Gi      0 (0%)        0 (0%)
+  hugepages-2Mi      0 (0%)        0 (0%)
+  nvidia.com/gpu     1             1
 ```
 
 따라서 Jupyter notebook에서 GPU를 사용하고자 한다면, 그래픽 인스턴스에 자동으로 할당이 되며, 하기와 같이 GPU가 사용 가능함을 확인할 수 있다.
