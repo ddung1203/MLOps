@@ -189,7 +189,9 @@ replicaset.apps/ml-pipeline-ui-artifact-67b5454fcb          1         1         
 replicaset.apps/ml-pipeline-visualizationserver-9d8bfdc78   1         1         1       4m16s
 ```
 
-### ⚠️ 경고
+---
+
+#### ⚠️ 경고
 
 현재 버전 기준, HPA의 `autoscaling/v2beta2`은 deprecated 되었다. 하지만 `awslabs` 기준의 버전과 이에 상응하는 `kubeflow` 버전은 deprecated된 `autoscaling/v2beta2`를 사용하고 있다.
 
@@ -201,7 +203,7 @@ replicaset.apps/ml-pipeline-visualizationserver-9d8bfdc78   1         1         
 > grep -r autoscaling/v2beta2 .
 > ```
 
-### ⚠️ EKS Worker node Pod 한도
+#### ⚠️ EKS Worker node Pod 한도
 
 Worker Node에는 인스턴스 타입별로 최대 Pod 개수가 정해져 있다. EKS의 기능상 제약사항이 아닌 EC2의 ENI의 개수 및 ENI 별로 할당 가능한 IP 주소의 개수에서 나온다.
 
