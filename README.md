@@ -56,6 +56,44 @@ Connect 버튼을 눌러서 하기와 같이 노트북에 접속할 수 있다.
 
 상기 이미지와 같이, 노트북 생성시 해당 Kubeflow 및 namespace의 리소스를 사용할 수 있는 권한을 바인딩하기 때문에 노트북 상에서도 `kubectl`을 통해 k8s의 리소스를 관리할 수 있다. 물론 권한이 없는 다른 네임스페이스의 리소스를 확인할 수는 없다.
 
+추가로, GPU를 사용을 활성화 시 하기와 같이 요청하게 된다.
+
+`test-0`의 Pod
+
+```yaml
+spec:
+  containers:
+    - env:
+      resources:
+        limits:
+          cpu: 600m
+          memory: 1288490188800m
+          nvidia.com/gpu: "1"
+        requests:
+          cpu: 500m
+          memory: 1Gi
+          nvidia.com/gpu: "1"
+```
+
+`kubectl describe nodes`
+
+```bash
+Containers:
+  test:
+    Limits:
+      cpu:             600m
+      memory:          1288490188800m
+      nvidia.com/gpu:  1
+    Requests:
+      cpu:             500m
+      memory:          1Gi
+      nvidia.com/gpu:  1
+```
+
+따라서 Jupyter notebook에서 GPU를 사용하고자 한다면, 그래픽 인스턴스에 자동으로 할당이 되며, 하기와 같이 GPU가 사용 가능함을 확인할 수 있다.
+
+![Jupyter](./img/jupyter_2.png)
+
 #### 커스텀 이미지 생성
 
 Jupyter Notebook이 실행되는 이미지를 커스텀하여 생성할 수 있다. 하기 Dockerfile을 빌드 후 registry에 배포한다. 이후 Custom Image 항목 내 적용하여 사용한다.
