@@ -99,7 +99,7 @@ Allocated resources:
 Jupyter Notebook이 실행되는 이미지를 커스텀하여 생성할 수 있다. 하기 Dockerfile을 빌드 후 registry에 배포한다. 이후 Custom Image 항목 내 적용하여 사용한다.
 
 ```Dockerfile
-FROM python:3.8
+FROM python:3.6
 
 WORKDIR /home/jovyan
 
@@ -108,29 +108,30 @@ USER root
 RUN pip install jupyter -U && pip install jupyterlab
 
 RUN apt-get update && apt-get install -yq --no-install-recommends \
-    apt-transport-https \
-    build-essential \
-    bzip2 \
-    ca-certificates \
-    curl \
-    g++ \
-    git \
-    gnupg \
-    graphviz \
-    locales \
-    lsb-release \
-    openssh-client \
-    sudo \
-    unzip \
-    vim \
-    wget \
-    zip \
-    emacs \
-    python3-pip \
-    python3-dev \
-    python3-setuptools \
-    && apt-get clear && \
-    rm -rf /var/lib/apt/lists/*
+  apt-transport-https \
+  build-essential \
+  bzip2 \
+  ca-certificates \
+  curl \
+  g++ \
+  git \
+  gnupg \
+  graphviz \
+  locales \
+  lsb-release \
+  openssh-client \
+  sudo \
+  unzip \
+  vim \
+  wget \
+  zip \
+  emacs \
+  python3-pip \
+  python3-dev \
+  python3-setuptools \
+  && apt-get clean && \
+  rm -rf /var/lib/apt/lists/*
+
 
 RUN curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add -
 RUN echo "deb https://apt.kubernetes.io/ kubernetes-xenial main" | sudo tee -a /etc/apt/sources.list.d/kubernetes.list
@@ -140,16 +141,21 @@ RUN apt-get install -y kubectl
 RUN pip install jupyterlab && \
     jupyter serverextension enable --py jupyterlab --sys-prefix
 
+RUN pip install kubernetes kubeflow kfp redis
+RUN pip install kubeflow-katib==0.0.2
+RUN pip install kubeflow-fairing
+
 ARG NB_USER=jovyan
 
 EXPOSE 8888
+
 
 ENV NB_USER $NB_USER
 ENV NB_UID=1000
 ENV HOME /home/$NB_USER
 ENV NB_PREFIX /
 
-CMD ["sh", "-c", "jupyter lab --notebook-dir=/home/jovyan --ip=0.0.0.0 --no-browswer --allow-root --port=8888 --LabApp.token='' --LabApp.password='' --LabApp.allow_origin='*' --LabApp.base_url=${NB_USER}"]
+CMD ["sh", "-c", "jupyter lab --notebook-dir=/home/jovyan --ip=0.0.0.0 --no-browser --allow-root --port=8888 --LabApp.token='' --LabApp.password='' --LabApp.allow_origin='*' --LabApp.base_url=${NB_PREFIX}"]
 ```
 
 **⚠️ Could not find CSRF cookie XSRF-TOKEN in the request.**
@@ -171,3 +177,77 @@ spec:
 ```bash
 kubectl rollout restart deployment jupyter-web-app-deployment -n kubeflow
 ```
+
+### Fairing
+
+Fairing은 Kubeflow가 설치된 환경에서 ML 모델을 학습/배포할 수 있는 Python 패키지이다. PyCharm에서도 Kubeflow의 Jupyter Notebook에서도 ML 모델의 생성, 학습, 배포 등의 작업을 k8s 클러스터로 요청이 가능하다.
+
+- 쉬운 ML 모델 트레이닝 잡 패키지(작성한 모델 코드를 Dockerization)
+- 쉬운 학습
+- 쉬운 배포
+
+#### 아키텍처
+
+페어링은 Jupyter Notebook, Python 함수, Python 파일을 Docker 이미지로 빌드 후 레지스트리에 푸시한다. 푸시가 완료되면 설정한 배포 리소스 타입에 따라 k8s Job, TFJob, KFServing 등의 리소스로 변환하여 k8s API 서버로 요청한다. 이 과정은 하기와 같이 실행한다.
+
+- preprocessor: 작성된 코드를 Docker 이미지에 넣을 수 있도록 패키지화
+- builder: 패키지된 파일을 Docker 이미지화
+- deployer: 생성된 이미지를 k8s 클러스터에 배포
+
+![Fairing](./img/fairing_0.png)
+
+#### 설치
+
+생성한 Jupyter Notebook의 Terminal에서 실행한다.
+
+```bash
+pip install kubeflow-fairing
+```
+
+#### 설정
+
+페어링은 Docker 이미지와 k8s 리소스를 사용하는 패키지이기 때문에 Docker 레지스트리 정보와 Kubeflow 클러스터에 접속할 수 있는 권한이 필요하다.
+
+따라서, Jupyter Notebook 내에 Terminal 접속 후 `/home/jovyan/.docker/config.json`을 작성하여 Docker 이미지를 푸시 및 풀 설정을 해주도록 하며, k8s에서 Docker 이미지를 사용하기 위해선 [이곳](https://github.com/ddung1203/DevOps/blob/main/DevOps/imagePullSecrets.md#pod%EC%97%90%EC%84%9C-imagepullsecrets-%EC%84%A4%EC%A0%95)을 참고한다.
+
+> `default-editor`의 Service Account를 편집
+
+
+#### fairing.config
+
+페어링을 코드에 적용할 때, 코드를 건드리지 않고 fairing.config로 시작하는 코드만 넣어주면 페어링이 적용된다.
+
+```py
+import os
+from kubeflow import fairing
+from kubeflow.fairing.kubernetes.utils import get_resource_mutator
+
+def show_hostname():
+    print(os.environ['HOSTNAME'])
+
+DOCKER_REGISTRY = 'ghcr.io/ddung1203'
+fairing.config.set_builder(
+    'append',
+    image_name='fairing-job',
+    registry=DOCKER_REGISTRY,
+    base_image='tensorflow/tensorflow:1.14.0-py3',
+    push=True)
+
+fairing.config.set_deployer('job', pod_spec_mutators=[get_resource_mutator(cpu=0.5, memory=0.5)])
+
+if __name__ == '__main__':
+    print('local show_hostname()')
+    show_hostname()
+    print('remote show_hostname()')
+    remote_show_hostname = fairing.config.fn(show_hostname)
+    remote_show_hostname()
+```
+
+상기 예제는 `HOSTNAME` 환경변수를 출력하는 함수를 k8s의 Job으로 실행하는 소스이다.
+
+실행이 되면 `tensorflow/tensorflow:1.14.0-py3`를 베이스 이미지를 삼고 `train()` 함수를 실행하는 Docker 이미지를 생성한다.
+
+이후 `ghcr.io/ddung1203:fairing-job` 레지스트리에 푸시 후 완료되면 k8s Job이 실행된다.
+
+![Jupyter](./img/jupyter_3.png)
+
